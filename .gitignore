@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build
+backend/dist/
+
+# Environment
+.env
+.env.local
+
+# Flutter
+app/.dart_tool/
+app/.packages
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+firebase_options.dart
