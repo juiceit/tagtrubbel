@@ -1,125 +1,90 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/subscription.dart';
 import '../models/station.dart';
 import '../models/departure.dart';
 
 class ApiService {
-  // TODO: Update with your backend URL
-  static const String _baseUrl = 'http://localhost:3000/api';
+  final SupabaseClient _client;
   final String? _deviceId;
 
-  ApiService({String? deviceId}) : _deviceId = deviceId;
+  ApiService({required SupabaseClient client, String? deviceId})
+      : _client = client,
+        _deviceId = deviceId;
 
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (_deviceId case final id?) 'X-Device-Id': id,
-      };
+
 
   Future<String> registerDevice({
     required String fcmToken,
     required String platform,
   }) async {
-    final response = await http.post(
-      Uri.parse('$_baseUrl/devices'),
-      headers: _headers,
-      body: jsonEncode({'fcm_token': fcmToken, 'platform': platform}),
-    );
-    _checkResponse(response);
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return data['id'] as String;
+    final result = await _client
+        .from('devices')
+        .upsert({'fcm_token': fcmToken, 'platform': platform},
+            onConflict: 'fcm_token')
+        .select('id')
+        .single();
+    return result['id'] as String;
   }
 
   Future<void> deleteDevice(String deviceId) async {
-    final response = await http.delete(
-      Uri.parse('$_baseUrl/devices/$deviceId'),
-      headers: _headers,
-    );
-    _checkResponse(response);
+    await _client.from('devices').delete().eq('id', deviceId);
   }
 
   Future<List<Subscription>> getSubscriptions() async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/subscriptions'),
-      headers: _headers,
-    );
-    _checkResponse(response);
-    final list = jsonDecode(response.body) as List;
-    return list
-        .map((e) => Subscription.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final data = await _client
+        .from('subscriptions')
+        .select()
+        .order('departure_time');
+    return data.map((e) => Subscription.fromJson(e)).toList();
   }
 
   Future<Subscription> createSubscription(Subscription sub) async {
-    final response = await http.post(
-      Uri.parse('$_baseUrl/subscriptions'),
-      headers: _headers,
-      body: jsonEncode(sub.toJson()),
-    );
-    _checkResponse(response);
-    return Subscription.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>);
+    final result = await _client
+        .from('subscriptions')
+        .insert({...sub.toJson(), 'device_id': _deviceId}).select().single();
+    return Subscription.fromJson(result);
   }
 
   Future<Subscription> updateSubscription(Subscription sub) async {
-    final response = await http.put(
-      Uri.parse('$_baseUrl/subscriptions/${sub.id}'),
-      headers: _headers,
-      body: jsonEncode(sub.toJson()),
-    );
-    _checkResponse(response);
-    return Subscription.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>);
+    final result = await _client
+        .from('subscriptions')
+        .update(sub.toJson())
+        .eq('id', sub.id)
+        .select()
+        .single();
+    return Subscription.fromJson(result);
   }
 
   Future<void> deleteSubscription(String id) async {
-    final response = await http.delete(
-      Uri.parse('$_baseUrl/subscriptions/$id'),
-      headers: _headers,
-    );
-    _checkResponse(response);
+    await _client.from('subscriptions').delete().eq('id', id);
   }
 
   Future<List<Station>> searchStations(String query) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/stations?q=${Uri.encodeComponent(query)}'),
-      headers: _headers,
+    final res = await _client.functions.invoke(
+      'search-stations',
+      queryParameters: {'q': query},
+      method: HttpMethod.get,
     );
-    _checkResponse(response);
-    final list = jsonDecode(response.body) as List;
-    return list
-        .map((e) => Station.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final list = jsonDecode(res.data as String) as List;
+    return list.map((e) => Station.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Future<List<Departure>> getDepartures({
     required String station,
     String? direction,
   }) async {
-    var url = '$_baseUrl/departures?station=${Uri.encodeComponent(station)}';
-    if (direction != null) {
-      url += '&direction=${Uri.encodeComponent(direction)}';
-    }
-    final response = await http.get(Uri.parse(url), headers: _headers);
-    _checkResponse(response);
-    final list = jsonDecode(response.body) as List;
+    final params = {'station': station};
+    if (direction != null) params['direction'] = direction;
+
+    final res = await _client.functions.invoke(
+      'get-departures',
+      queryParameters: params,
+      method: HttpMethod.get,
+    );
+    final list = jsonDecode(res.data as String) as List;
     return list
         .map((e) => Departure.fromJson(e as Map<String, dynamic>))
         .toList();
   }
-
-  void _checkResponse(http.Response response) {
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(response.statusCode, response.body);
-    }
-  }
-}
-
-class ApiException implements Exception {
-  final int statusCode;
-  final String body;
-  ApiException(this.statusCode, this.body);
-
-  @override
-  String toString() => 'ApiException($statusCode): $body';
 }

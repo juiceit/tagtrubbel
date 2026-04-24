@@ -10,7 +10,7 @@ notification to your phone when there are delays or cancellations — including 
 
 ```
 app/       Flutter mobile app (iOS + Android)
-backend/   Node.js + Express API server
+supabase/  Supabase backend (migrations, Edge Functions)
 ```
 
 ## Getting started
@@ -18,33 +18,48 @@ backend/   Node.js + Express API server
 ### Prerequisites
 
 - Flutter SDK 3.x
-- Node.js 20+
-- PostgreSQL
+- A [Supabase](https://supabase.com) project (free tier works)
 - A Trafikverket API key (free): https://api.trafikinfo.trafikverket.se/
-- Firebase project (for push notifications)
+- A Firebase project (for push notifications)
 
-### Backend
+### Supabase setup
 
-```bash
-cd backend
-cp ../.env.example .env   # Fill in your values
-npm install
-npm run migrate           # Create database tables
-npm run dev               # Start dev server on :3000
-```
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run the migration in the Supabase SQL Editor (copy `supabase/migrations/001_initial.sql`)
+3. Deploy Edge Functions:
+   ```bash
+   supabase functions deploy search-stations
+   supabase functions deploy get-departures
+   supabase functions deploy check-trains
+   ```
+4. Set secrets for Edge Functions:
+   ```bash
+   supabase secrets set TRAFIKVERKET_API_KEY=your-key
+   supabase secrets set FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}'
+   ```
+5. Set up a cron job to call the `check-trains` function every minute:
+   - Supabase Dashboard → Database → Extensions → enable `pg_cron` and `pg_net`
+   - Then run in SQL Editor:
+     ```sql
+     SELECT cron.schedule(
+       'check-trains',
+       '* * * * *',
+       $$SELECT net.http_post(
+         url := 'https://YOUR_PROJECT.supabase.co/functions/v1/check-trains',
+         headers := '{"Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb
+       )$$
+     );
+     ```
 
 ### App
 
-```bash
-cd app
-flutter pub get
-flutter run
-```
-
-## Configuration
-
-The app connects to the backend to register the device and manage subscriptions.
-Update the API base URL in `app/lib/services/api_service.dart`.
+1. Update `app/lib/main.dart` with your Supabase URL and anon key
+2. Run:
+   ```bash
+   cd app
+   flutter pub get
+   flutter run
+   ```
 
 ## Features
 
@@ -56,3 +71,4 @@ Update the API base URL in `app/lib/services/api_service.dart`.
 - Push notifications for: delayed trains, cancelled trains, and pattern warnings
 - Swedish and English UI (auto-detected from OS, manually switchable)
 - GDPR: delete all your data from the settings screen
+- Row Level Security: each device can only see its own data

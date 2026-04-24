@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tagtrubbel/l10n/generated/app_localizations.dart';
 import '../providers/settings_provider.dart';
-import '../services/api_service.dart';
 import '../services/notification_service.dart';
+import '../providers/subscriptions_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -49,7 +49,7 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.delete_forever),
             title: Text(l10n.deleteAllData),
-            onTap: () => _confirmDeleteAllData(context),
+            onTap: () => _confirmDeleteAllData(context, ref),
           ),
           const Divider(),
           _SectionHeader(l10n.about),
@@ -63,7 +63,7 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmDeleteAllData(BuildContext context) async {
+  Future<void> _confirmDeleteAllData(BuildContext context, WidgetRef ref) async {
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -88,7 +88,8 @@ class SettingsScreen extends ConsumerWidget {
       final deviceId = await NotificationService.getStoredDeviceId();
       if (deviceId != null) {
         try {
-          await ApiService().deleteDevice(deviceId);
+          final api = ref.read(apiServiceProvider);
+          await api.deleteDevice(deviceId);
           await NotificationService.clearStoredDeviceId();
         } catch (_) {
           // Best effort
